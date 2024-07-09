@@ -339,13 +339,13 @@ function rm.ResetPost()
    table.wipe(rm.mailcounts);
 end
 
-function rm.SendNow(sender)
+function rm.SendNow(sender, sure)
    if not MailFrame:IsShown() then
       rm.Print(L.TEXT_NOT_VISIBLE);
       rm.ResetPost();
       return false;
    end
-   if rm.mailitems > 0 then 
+   if rm.mailitems > 0 and sure then 
       local is_SendMailFrame_Shown = SendMailFrame:IsShown();
       if not is_SendMailFrame_Shown then
 	 MailFrameTab2:Click();
@@ -455,12 +455,11 @@ function rm.CountAttachments(mailID)
    return count;
 end
 
-function rm.DoForwardTo(mailID)
+function rm.DoForwardTo(mailID, sure)
    local function f()
       local count = rm.CountAttachments(mailID);
 	  local count2 = rm.CountAttachments(mailID);
 	  local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
-
       if rm.freespace() < count then
 	  
 		rm.Print("Not enough bag space");
@@ -478,12 +477,16 @@ function rm.DoForwardTo(mailID)
 	    end
 	    count = count - 1;
 	    if count == 0 then
-		   rm.SendNow(sender)
-	       break;
+			rm.SendNow(sender, sure)
+			break;
 	    end
 	 end
       end
-      MailFrameTab1:Click();
+		if sure then
+			MailFrameTab1:Click();
+		else
+			MailFrameTab2:Click();
+		end
    end
    return rm.PushJob(f);
 end
@@ -535,19 +538,27 @@ function rm.ForwardToButton_OnEnter(self)
 end
 
 function rm.ForwardToButton_OnClick(self)
-   local mailID = InboxFrame.openMailID;
-   rm.DoForwardTo(mailID);
+	local mailID = InboxFrame.openMailID;
+	if IsShiftKeyDown() or IsAltKeyDown() then
+		rm.DoForwardTo(mailID,false);
+	else
+		rm.DoForwardTo(mailID,true);
+	end
 end
 
 function rm.Click(self, button, down)
-	selectedID = self.id + (InboxFrame.pageNum-1)*7
-	local f = InboxItemCanDelete(selectedID)
+	mailID = self.id + (InboxFrame.pageNum-1)*7
+	local f = InboxItemCanDelete(mailID)
 	if f then
-		rm.DoForwardTo(selectedID);
+		if IsShiftKeyDown() or IsAltKeyDown() then
+			rm.DoForwardTo(mailID,false);
+		else
+			rm.DoForwardTo(mailID,true);
+		end
 	else
-		ReturnInboxItem(selectedID)
+		ReturnInboxItem(mailID)
 	end
-	selectedID = nil
+	mailID = nil
 end
 
 function rm:InboxFrame_Update()
@@ -559,7 +570,7 @@ function rm:InboxFrame_Update()
 		else
 			local f = InboxItemCanDelete(index)
 			c.texture:SetTexture(f and "Interface\\ChatFrame\\ChatFrameExpandArrow" or "Interface\\ChatFrame\\ChatFrameExpandArrow")
-			c.tooltip = f and DELETE or MAIL_RETURN
+			c.tooltip = f and "Force Return" or MAIL_RETURN
 			c:SetScript("OnClick", rm.Click)
 
 			c:Show()
