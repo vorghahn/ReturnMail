@@ -8,7 +8,6 @@
 
 --[[
 TODO
- - elvui
 --]]
 
 ReturnMailLocale = {}
@@ -80,9 +79,11 @@ function rm.SuspendJobOnEvent(event)
    if rm.jobs[1] then
       rm.Debug(event);
       if rm.is_ClickSendMailItemButton then
-	 rm.iserror = true;
+		rm.iserror = true;
+      elseif rm.is_ClickSend then
+		rm.iserror = true;
       else
-	 rm.NextJob();
+		rm.NextJob();
       end
    end
 end
@@ -350,7 +351,7 @@ function rm.SendNow(sender, sure)
       if not is_SendMailFrame_Shown then
 	 MailFrameTab2:Click();
       end
-
+		rm.is_ClickSend = true;
       SendMail(sender, ("Return"), "");
       
       rm.WaitFor("MAIL_SEND_SUCCESS");
@@ -358,6 +359,7 @@ function rm.SendNow(sender, sure)
       rm.WaitFor("OnUpdate");
       
       rm.ResetPost();
+	  rm.is_ClickSend = nil;
       if not is_SendMailFrame_Shown then
 	 MailFrameTab1:Click();
       end
@@ -561,7 +563,7 @@ function rm.Click(self, button, down)
 	mailID = nil
 end
 
-function rm:InboxFrame_Update()
+function rm.InboxFrame_Update()
 	for i = 1, 7 do
 		local index = i + (InboxFrame.pageNum-1)*7
 		local c = _G["MailItem"..i.."ExpireTime"].forcereturnicon

@@ -1,6 +1,6 @@
 ## Interface: 30300
 ## Title: ReturnMail
-## Version: 1.1.0
+## Version: 1.1.1
 ## Author: Verlange
 
 ## SavedVariables: ReturnMailVars
