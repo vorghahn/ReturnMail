@@ -36,6 +36,7 @@ L.TEXT_NOT_VISIBLE = "You need a post open to send mails!";
 L.TEXT_WAITING_FOR_REFRESH = "Waiting for refresh...";
 L.TOOLTIP_FORWARD_TO_BUTTON = RED.."Return to sender!"..CLOSE;
 L.TITLE_FORWARD_TO_BUTTON = "Force Return";
+L.TITLE_FORWARD_ALL_BUTTON = "TEST";
 L.TITLE_SHORT_FORWARD_TO_BUTTON = "R";
 
 
@@ -63,14 +64,17 @@ function rm.NextJob()
 end
 
 function rm.ResumeJobOnEvent(event)
+--print("ResumeJobOnEvent")
    if rm.isWaitingFor == event then
       rm.isWaitingFor = nil;
       if rm.jobs[1] then
-	 rm.Debug("Resuming on : "..(event or "nil"));
-	 local cont = rm.jobs[1]();
-	 if not cont then
-	    rm.NextJob();
-	 end
+		print(rm.jobs[1])
+		rm.Debug("Resuming on : "..(event or "nil"));
+		local cont = rm.jobs[1]();
+		print(cont)
+		if not cont then
+			rm.NextJob();
+		end
       end
    end
 end
@@ -219,6 +223,15 @@ function rm.VARIABLES_LOADED(self)
    rm.ForwardToButton:SetScript("OnClick", rm.ForwardToButton_OnClick);
    rm.ForwardToButton:SetScript("OnEnter", rm.ForwardToButton_OnEnter);
    rm.ForwardToButton:SetScript("OnLeave", rm.OnLeave);
+   
+      ReturnMailReturnMailForwardAllButton = ReturnMailForwardAllButton or
+      CreateFrame("Button", "ReturnMailForwardAllButton", InboxCloseButton, "UIPanelButtonTemplate");
+   rm.ForwardAllButton = ReturnMailForwardAllButton;
+   rm.ForwardAllButton:SetAllPoints(InboxCloseButton);
+   rm.ForwardAllButton:SetText(L.TITLE_FORWARD_ALL_BUTTON);
+   rm.ForwardAllButton:SetScript("OnClick", rm.DoOpenMail);
+   rm.ForwardAllButton:SetScript("OnLeave", rm.OnLeave);
+
    	if ElvUI then
 		local E, L, V, P, G = unpack(ElvUI)
 		local S = E:GetModule("Skins")
@@ -281,12 +294,50 @@ function rm.InboxIter()
 	    rm.Debug("Skipping GM");
 	    skipped = true;
 	 end
+	 print(mailID)
 	 if not skipped then
-	    coroutine.yield(mailID, subject, money);
+		print(mailID)
+	    coroutine.yield(mailID, daysLeft);
 	 end
       end
    end
    return coroutine.wrap(f);
+end
+
+local SubjectPatterns = {
+	AHCancelled = gsub(AUCTION_REMOVED_MAIL_SUBJECT, "%%s", ".*"),
+	AHExpired = gsub(AUCTION_EXPIRED_MAIL_SUBJECT, "%%s", ".*"),
+	AHOutbid = gsub(AUCTION_OUTBID_MAIL_SUBJECT, "%%s", ".*"),
+	AHSuccess = gsub(AUCTION_SOLD_MAIL_SUBJECT, "%%s", ".*"),
+	AHWon = gsub(AUCTION_WON_MAIL_SUBJECT, "%%s", ".*"),
+}
+
+function rm.GetMailType(msgSubject)
+	if msgSubject then
+		for k, v in pairs(SubjectPatterns) do
+			if msgSubject:find(v) then return k end
+		end
+	end
+	return "NonAHMail"
+end
+
+function rm.DoOpenMail()
+	print("Openmail")
+	--local function f()
+		for mailID, daysLeft in rm.InboxIter() do
+			rm.DoForwardTo(mailID, true)
+			--local mailType = rm.GetMailType(subject);
+			--if mailType ~= "NonAHMail" then
+			--	print(mailID)
+				if tonumber(daysLeft) <= 20 then
+					print(mailID)
+					rm.DoForwardTo(mailID, true)
+				end
+			--end
+		end
+		return rm.WaitForRefresh(rm.DoOpenMail);
+	--end
+	--return rm.PushJob(f);
 end
 
 function rm.MatchItem(itemLink, itemarg)
