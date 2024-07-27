@@ -8,6 +8,7 @@
 
 --[[
 TODO
+--rate limit auto sending
 --]]
 
 ReturnMailLocale = {}
@@ -21,6 +22,7 @@ rm.jobs = {};
 rm.lastAH = {};
 rm.mailcounts = {};
 rm.work = {};
+rm.returnDays = 7;
 local eh = rm.EventHandler;
 local _G = getfenv(0)
 rm.skip_cod = true;
@@ -36,7 +38,7 @@ L.TEXT_NOT_VISIBLE = "You need a post open to send mails!";
 L.TEXT_WAITING_FOR_REFRESH = "Waiting for refresh...";
 L.TOOLTIP_FORWARD_TO_BUTTON = RED.."Return to sender!"..CLOSE;
 L.TITLE_FORWARD_TO_BUTTON = "Force Return";
-L.TITLE_FORWARD_ALL_BUTTON = "TEST";
+L.TITLE_FORWARD_ALL_BUTTON = "Return expiring";
 L.TITLE_SHORT_FORWARD_TO_BUTTON = "R";
 
 
@@ -68,10 +70,8 @@ function rm.ResumeJobOnEvent(event)
    if rm.isWaitingFor == event then
       rm.isWaitingFor = nil;
       if rm.jobs[1] then
-		print(rm.jobs[1])
 		rm.Debug("Resuming on : "..(event or "nil"));
 		local cont = rm.jobs[1]();
-		print(cont)
 		if not cont then
 			rm.NextJob();
 		end
@@ -208,6 +208,10 @@ function rm.OnLoad(self)
 	end
 end
 
+function rm:returnDaysSet(days)
+	rm.returnDays = tonumber(days) or 7
+end
+
 function rm.VARIABLES_LOADED(self)
    rm.JobFrame:UnregisterEvent("VARIABLES_LOADED");
 
@@ -216,7 +220,7 @@ function rm.VARIABLES_LOADED(self)
    rm.JobFrame:SetScript("OnEvent", rm.MAIL_SHOW);
    
    ReturnMailForwardToButton = ReturnMailForwardToButton or
-      CreateFrame("Button", "ReturnMailForwardToButton", OpenMailCancelButton, "UIPanelButtonTemplate");
+   CreateFrame("Button", "ReturnMailForwardToButton", OpenMailCancelButton, "UIPanelButtonTemplate");
    rm.ForwardToButton = ReturnMailForwardToButton;
    rm.ForwardToButton:SetAllPoints(OpenMailCancelButton);
    rm.ForwardToButton:SetText(L.TITLE_FORWARD_TO_BUTTON);
@@ -224,13 +228,38 @@ function rm.VARIABLES_LOADED(self)
    rm.ForwardToButton:SetScript("OnEnter", rm.ForwardToButton_OnEnter);
    rm.ForwardToButton:SetScript("OnLeave", rm.OnLeave);
    
-      ReturnMailReturnMailForwardAllButton = ReturnMailForwardAllButton or
-      CreateFrame("Button", "ReturnMailForwardAllButton", InboxCloseButton, "UIPanelButtonTemplate");
+   ReturnMailForwardAllButton = ReturnMailForwardAllButton or
+   CreateFrame("Button", "ReturnMailForwardAllButton", InboxFrame, "UIPanelButtonTemplate");
    rm.ForwardAllButton = ReturnMailForwardAllButton;
-   rm.ForwardAllButton:SetAllPoints(InboxCloseButton);
+   rm.ForwardAllButton:SetPoint("TOPLEFT", InboxCloseButton ,"TOPLEFT", -160, -30);
+   rm.ForwardAllButton:SetWidth(120)
+   rm.ForwardAllButton:SetHeight(20)
    rm.ForwardAllButton:SetText(L.TITLE_FORWARD_ALL_BUTTON);
    rm.ForwardAllButton:SetScript("OnClick", rm.DoOpenMail);
    rm.ForwardAllButton:SetScript("OnLeave", rm.OnLeave);
+   
+   
+   ReturnMailDays = ReturnMailDays or
+   CreateFrame("EditBox", "ReturnMailDays",
+                              InboxFrame, "InputBoxTemplate")
+   rm.ForwardAllDays = ReturnMailDays;
+   rm.ForwardAllDays:SetPoint("TOPLEFT", ReturnMailForwardAllButton ,"TOPLEFT", 130, 0);
+   rm.ForwardAllDays:SetWidth(20)
+   rm.ForwardAllDays:SetHeight(20)
+   rm.ForwardAllDays:SetText(rm.returnDays);
+   rm.ForwardAllDays:SetAutoFocus(false);
+   
+   local ForwardAllText=CreateFrame("Frame","FrameName",InboxFrame);--    Our frame
+	ForwardAllText:SetPoint("TOPLEFT", ReturnMailForwardAllButton ,"TOPLEFT", 150, 0);
+	ForwardAllText:SetSize(40,20);
+ 
+--  FontStrings only need a position set. By default, they size automatically according to the text shown.
+	local text=ForwardAllText:CreateFontString(nil,"OVERLAY","GameFontNormal");--    Our text area
+	text:SetPoint("CENTER");
+	text:SetText("days");
+   
+
+
 
    	if ElvUI then
 		local E, L, V, P, G = unpack(ElvUI)
@@ -243,6 +272,8 @@ function rm.VARIABLES_LOADED(self)
 			local select = select
 			local unpack = unpack
 			S:HandleButton(ReturnMailForwardToButton)
+			S:HandleButton(ReturnMailForwardAllButton)
+			S:HandleEditBox(ReturnMailDays)
 		end	
 	end
 
@@ -294,9 +325,7 @@ function rm.InboxIter()
 	    rm.Debug("Skipping GM");
 	    skipped = true;
 	 end
-	 print(mailID)
 	 if not skipped then
-		print(mailID)
 	    coroutine.yield(mailID, daysLeft);
 	 end
       end
@@ -323,15 +352,20 @@ end
 
 function rm.DoOpenMail()
 	print("Openmail")
+	print(rm.ForwardAllDays:GetText())
 	--local function f()
 		for mailID, daysLeft in rm.InboxIter() do
 			rm.DoForwardTo(mailID, true)
 			--local mailType = rm.GetMailType(subject);
 			--if mailType ~= "NonAHMail" then
 			--	print(mailID)
-				if tonumber(daysLeft) <= 20 then
-					print(mailID)
-					rm.DoForwardTo(mailID, true)
+				if tonumber(daysLeft) <= tonumber(rm.ForwardAllDays:GetText()) then
+					local f = InboxItemCanDelete(mailID)
+					if f then
+						rm.DoForwardTo(mailID,true);
+					else
+						ReturnInboxItem(mailID)
+					end
 				end
 			--end
 		end
