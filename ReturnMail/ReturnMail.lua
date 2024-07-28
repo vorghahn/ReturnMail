@@ -326,7 +326,7 @@ function rm.InboxIter()
 	    skipped = true;
 	 end
 	 if not skipped then
-	    coroutine.yield(mailID, daysLeft);
+	    coroutine.yield(mailID, daysLeft, subject);
 	 end
       end
    end
@@ -339,6 +339,7 @@ local SubjectPatterns = {
 	AHOutbid = gsub(AUCTION_OUTBID_MAIL_SUBJECT, "%%s", ".*"),
 	AHSuccess = gsub(AUCTION_SOLD_MAIL_SUBJECT, "%%s", ".*"),
 	AHWon = gsub(AUCTION_WON_MAIL_SUBJECT, "%%s", ".*"),
+	Mana = gsub("You got Manabonked!", "%%s", ".*"),
 }
 
 function rm.GetMailType(msgSubject)
@@ -354,12 +355,12 @@ function rm.DoOpenMail()
 	print("Openmail")
 	print(rm.ForwardAllDays:GetText())
 	--local function f()
-		for mailID, daysLeft in rm.InboxIter() do
-			rm.DoForwardTo(mailID, true)
-			--local mailType = rm.GetMailType(subject);
-			--if mailType ~= "NonAHMail" then
-			--	print(mailID)
-				if tonumber(daysLeft) <= tonumber(rm.ForwardAllDays:GetText()) then
+		for mailID, daysLeft, subject in rm.InboxIter() do
+			local mailType = rm.GetMailType(subject);
+			print(mailType)
+			if mailType == "NonAHMail" then
+				if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
+					print(daysLeft)
 					local f = InboxItemCanDelete(mailID)
 					if f then
 						rm.DoForwardTo(mailID,true);
@@ -367,7 +368,7 @@ function rm.DoOpenMail()
 						ReturnInboxItem(mailID)
 					end
 				end
-			--end
+			end
 		end
 		return rm.WaitForRefresh(rm.DoOpenMail);
 	--end
