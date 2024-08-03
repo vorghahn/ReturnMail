@@ -231,7 +231,7 @@ function rm.VARIABLES_LOADED(self)
    ReturnMailForwardAllButton = ReturnMailForwardAllButton or
    CreateFrame("Button", "ReturnMailForwardAllButton", InboxFrame, "UIPanelButtonTemplate");
    rm.ForwardAllButton = ReturnMailForwardAllButton;
-   rm.ForwardAllButton:SetPoint("TOPLEFT", InboxCloseButton ,"TOPLEFT", -160, -30);
+   rm.ForwardAllButton:SetPoint("TOPLEFT", InboxCloseButton ,"TOPLEFT", -280, -10);
    rm.ForwardAllButton:SetWidth(120)
    rm.ForwardAllButton:SetHeight(20)
    rm.ForwardAllButton:SetText(L.TITLE_FORWARD_ALL_BUTTON);
@@ -243,14 +243,14 @@ function rm.VARIABLES_LOADED(self)
    CreateFrame("EditBox", "ReturnMailDays",
                               InboxFrame, "InputBoxTemplate")
    rm.ForwardAllDays = ReturnMailDays;
-   rm.ForwardAllDays:SetPoint("TOPLEFT", ReturnMailForwardAllButton ,"TOPLEFT", 130, 0);
+   rm.ForwardAllDays:SetPoint("TOPLEFT", ReturnMailForwardAllButton ,"TOPLEFT", 180, 0);
    rm.ForwardAllDays:SetWidth(20)
    rm.ForwardAllDays:SetHeight(20)
    rm.ForwardAllDays:SetText(rm.returnDays);
    rm.ForwardAllDays:SetAutoFocus(false);
    
    local ForwardAllText=CreateFrame("Frame","FrameName",InboxFrame);--    Our frame
-	ForwardAllText:SetPoint("TOPLEFT", ReturnMailForwardAllButton ,"TOPLEFT", 150, 0);
+	ForwardAllText:SetPoint("TOPLEFT", ReturnMailDays ,"TOPLEFT", 17, 0);
 	ForwardAllText:SetSize(40,20);
  
 --  FontStrings only need a position set. By default, they size automatically according to the text shown.
