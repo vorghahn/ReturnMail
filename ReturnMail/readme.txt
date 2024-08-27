@@ -9,4 +9,19 @@ This can be triggered by pressing the "Force Return" button inside each mail or 
 Holding 'Alt' or 'Shift' down whilst clicking acts as a modify and will draft but not send the reply allowing you to modify the return.
 
 Known issue(s):
-Trying to return a stack of items that also already exists in your bags will result in a partial stack of different quantity being returned. This is due to Blizzards design of automatically merging stacks when retrieving them.
+Return all is breaking on 'easy returns', those items able to be returned under existing game methods.
+
+Release Log:
+v1.3.0
+- Fix for stackable items breaking the return process.
+
+v1.2.0
+- Bulk mail return function added. Returns mail based on time remaining.
+
+v1.1.1
+- Added error catch for the receiver having a full mail box.
+
+v1.1.0
+- Tooltip fix
+- Added shift and alt modifiers.
+- Created readme

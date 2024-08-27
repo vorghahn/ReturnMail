@@ -311,6 +311,78 @@ function rm.TakeItemStr(itemargs)
    return nil;
 end
 
+function rm.SplitContainerItem(bagFrom,slotFrom,moveCount,bagTo,slotTo)
+   rm.Debug(string.format("rm.SplitContainerItem(%d,%d,%d,%d,%d)", bagFrom,slotFrom,moveCount,bagTo,slotTo));
+   local from_itemCount = select(2, GetContainerItemInfo(bagFrom, slotFrom));
+   ClearCursor(); -- For safty
+   if from_itemCount > moveCount then
+      rm.Debug(string.format("SplitContainerItem(%d,%d,%d)", bagFrom,slotFrom,moveCount));
+      SplitContainerItem(bagFrom,slotFrom,moveCount);
+   elseif from_itemCount == moveCount then
+      rm.Debug(string.format("PickupContainerItem(%d,%d)", bagFrom,slotFrom));
+      PickupContainerItem(bagFrom,slotFrom);
+   else
+      -- Suspending now since something is wrong.
+      coroutine.yield(nil);
+   end
+   PickupContainerItem(bagTo,slotTo);
+   rm.WaitFor("ITEM_UNLOCKED");
+   local expected = from_itemCount - moveCount;
+   rm.Debug(string.format("expected = from_itemCount - moveCount = %d - %d", from_itemCount, moveCount));
+   repeat
+      rm.WaitFor("BAG_UPDATE");
+      local new_itemCount = select(2, GetContainerItemInfo(bagFrom, slotFrom)) or 0;
+      rm.Debug(string.format("Waiting for BAG_UPDATE: (%d,%d) itemCount=%d, expected=%d", bagFrom,slotFrom,new_itemCount, expected));
+   until new_itemCount == expected;
+end
+
+function rm.FindEmptyBagSlot(srcBag)
+   local function f()
+      for bag = 0, 4 do
+	 local numberOfFreeSlots, BagType = GetContainerNumFreeSlots(bag);
+	 if bag == srcBag or BagType == 0 then
+	    for slot = 1, GetContainerNumSlots(bag) do
+	       local texture, itemCount, locked, quality, readable, lootable, itemLink = GetContainerItemInfo(bag, slot)
+	       if not itemLink then
+		  coroutine.yield(bag, slot);
+	       end
+	    end
+	 end
+      end
+   end
+   return coroutine.wrap(f);
+end
+
+function rm.SendLoop(itemName, quantity,sender,count2)
+   --rm.ResetPost();
+   local sendcount = 0;
+   local lastcount = 0;
+   rm.Debug(string.format("rm.SendLoop(quantity=%d)", quantity));
+   repeat
+      lastcount = sendcount;
+      for bag,slot,itemCount in rm.FindInBag(itemName) do
+	 if quantity <= 0 then
+	    break;
+	 end
+	 if itemCount > quantity then
+	    for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
+	       local moveCount = itemCount - quantity;
+	       rm.SplitContainerItem(bag,slot,moveCount,bag2,slot2);
+	       itemCount = itemCount - moveCount;
+	       break;
+	    end
+	 end
+	 rm.AddToSendMailItems(bag,slot,sender,count2)
+	    sendcount = sendcount + itemCount;
+	    quantity = quantity - itemCount;
+	 --end
+      end
+   until (sendcount == lastcount)
+   --if not rm.SendNow() then return 0; end
+   
+   return sendcount;
+end
+
 function rm.InboxIter()
    local numItems, totalItems = GetInboxNumItems();
    local function f()
@@ -361,8 +433,8 @@ function rm.DoOpenMail()
 			if mailType == "NonAHMail" then
 				if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
 					print(daysLeft)
-					local f = InboxItemCanDelete(mailID)
-					if f then
+					local d = InboxItemCanDelete(mailID)
+					if d then
 						rm.DoForwardTo(mailID,true);
 					else
 						ReturnInboxItem(mailID)
@@ -557,12 +629,20 @@ function rm.DoForwardTo(mailID, sure)
       for attachment = 1, 12 do
 	 local itemLink = GetInboxItemLink(mailID, attachment);
 	 if itemLink then
+		local qty = GetItemCount(itemLink)
 	    rm.TakeInboxItem(mailID, attachment);
-	    rm.WaitFor("BAG_UPDATE");
-	    for bag,slot,itemCount in rm.FindInBag(rm.RemoveUniqueId(itemLink)) do
-	       rm.AddToSendMailItems(bag,slot,sender,count2);
-	       break;
-	    end
+	    
+		qty = GetItemCount(itemLink) - qty
+		local _, _, _, _, _, _, _, maxStack = GetItemInfo(itemLink)
+		if maxStack == 1 then
+			rm.WaitFor("BAG_UPDATE");
+			for bag,slot,itemCount in rm.FindInBag(rm.RemoveUniqueId(itemLink)) do
+				rm.AddToSendMailItems(bag,slot,sender,count2);
+				break;
+			end
+		else
+			rm.SendLoop(rm.RemoveUniqueId(itemLink), qty, sender, count2)
+		end
 	    count = count - 1;
 	    if count == 0 then
 			rm.SendNow(sender, sure)
