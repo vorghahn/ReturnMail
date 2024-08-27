@@ -384,25 +384,54 @@ function rm.SendLoop(itemName, quantity,sender,count2)
 end
 
 function rm.InboxIter()
-   local numItems, totalItems = GetInboxNumItems();
-   local function f()
-      for mailID = numItems, 1, -1 do
-         local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
-	 local skipped = false
-	 if CODAmount and CODAmount > 0 then
-	    rm.Debug("Skipping CoD");
-	    skipped = true;
-	 end
-	 if isGM then
-	    rm.Debug("Skipping GM");
-	    skipped = true;
-	 end
-	 if not skipped then
-	    coroutine.yield(mailID, daysLeft, subject);
-	 end
-      end
-   end
-   return coroutine.wrap(f);
+	local numItems, totalItems = GetInboxNumItems();
+	local function f()
+		for mailID = numItems, 1, -1 do
+			local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
+			local skipped = false
+			if CODAmount and CODAmount > 0 then
+				rm.Debug("Skipping CoD");
+				skipped = true;
+			end
+			if isGM then
+				rm.Debug("Skipping GM");
+				skipped = true;
+			end
+			if not skipped then
+				coroutine.yield(mailID, daysLeft, subject);
+			end
+		end
+	end
+	return coroutine.wrap(f);
+end
+
+function rm.InboxIterEasy()
+	local numItems, totalItems = GetInboxNumItems();
+	--local function f()
+		for mailID = numItems, 1, -1 do
+			--print(mailID)
+			local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
+			local skipped = false
+			if CODAmount and CODAmount > 0 then
+				rm.Debug("Skipping CoD");
+				skipped = true;
+			end
+			if isGM then
+				rm.Debug("Skipping GM");
+				skipped = true;
+			end
+			local easy = InboxItemCanDelete(mailID)
+
+			if not skipped and not easy then
+				--todo
+				if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
+					rm.Debug("easy return");
+					rm.DoForwardToEasy(mailID)
+				end
+			end
+		end
+	--end
+	--return
 end
 
 local SubjectPatterns = {
@@ -424,25 +453,24 @@ function rm.GetMailType(msgSubject)
 end
 
 function rm.DoOpenMail()
+	rm.InboxIterEasy()
+	rm.DoOpenMailForce()
+end
+
+function rm.DoOpenMailForce()
 	print("Openmail")
 	print(rm.ForwardAllDays:GetText())
 	--local function f()
 		for mailID, daysLeft, subject in rm.InboxIter() do
 			local mailType = rm.GetMailType(subject);
-			print(mailType)
+			--print(mailType)
 			if mailType == "NonAHMail" then
 				if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
-					print(daysLeft)
-					local d = InboxItemCanDelete(mailID)
-					if d then
-						rm.DoForwardTo(mailID,true);
-					else
-						ReturnInboxItem(mailID)
-					end
+					rm.DoForwardTo(mailID,true);
 				end
 			end
 		end
-		return rm.WaitForRefresh(rm.DoOpenMail);
+		return rm.WaitForRefresh(rm.DoOpenMailForce);
 	--end
 	--return rm.PushJob(f);
 end
@@ -629,19 +657,22 @@ function rm.DoForwardTo(mailID, sure)
       for attachment = 1, 12 do
 	 local itemLink = GetInboxItemLink(mailID, attachment);
 	 if itemLink then
-		local qty = GetItemCount(itemLink)
-	    rm.TakeInboxItem(mailID, attachment);
-	    
-		qty = GetItemCount(itemLink) - qty
 		local _, _, _, _, _, _, _, maxStack = GetItemInfo(itemLink)
-		if maxStack == 1 then
+		local qtyold = GetItemCount(itemLink)
+	    rm.TakeInboxItem(mailID, attachment);
+		if qtyold == 0 or maxStack == 1 then
 			rm.WaitFor("BAG_UPDATE");
+		end
+	    local qtynew = GetItemCount(itemLink)
+		local delta = qtynew - qtyold
+		
+		if maxStack == 1 then
 			for bag,slot,itemCount in rm.FindInBag(rm.RemoveUniqueId(itemLink)) do
 				rm.AddToSendMailItems(bag,slot,sender,count2);
 				break;
 			end
 		else
-			rm.SendLoop(rm.RemoveUniqueId(itemLink), qty, sender, count2)
+			rm.SendLoop(rm.RemoveUniqueId(itemLink), delta, sender, count2)
 		end
 	    count = count - 1;
 	    if count == 0 then
@@ -655,6 +686,16 @@ function rm.DoForwardTo(mailID, sure)
 		else
 			MailFrameTab2:Click();
 		end
+   end
+   return rm.PushJob(f);
+end
+
+function rm.DoForwardToEasy(mailID)
+   local function f()
+      --todo
+	  ReturnInboxItem(mailID)
+      rm.WaitFor("MAIL_SUCCESS");
+      rm.WaitFor("OnUpdate");
    end
    return rm.PushJob(f);
 end

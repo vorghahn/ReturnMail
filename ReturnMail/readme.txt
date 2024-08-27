@@ -9,11 +9,12 @@ This can be triggered by pressing the "Force Return" button inside each mail or 
 Holding 'Alt' or 'Shift' down whilst clicking acts as a modify and will draft but not send the reply allowing you to modify the return.
 
 Known issue(s):
-Return all is breaking on 'easy returns', those items able to be returned under existing game methods.
+Can process fast enough to trigger mail desync resulting in a pause. Waiting a few seconds and hitting the send button will restart the process.
 
 Release Log:
 v1.3.0
 - Fix for stackable items breaking the return process.
+- Fix for easy returns breaking the iteration.
 
 v1.2.0
 - Bulk mail return function added. Returns mail based on time remaining.
