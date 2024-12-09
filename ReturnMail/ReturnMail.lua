@@ -312,28 +312,34 @@ function rm.TakeItemStr(itemargs)
 end
 
 function rm.SplitContainerItem(bagFrom,slotFrom,moveCount,bagTo,slotTo)
-   rm.Debug(string.format("rm.SplitContainerItem(%d,%d,%d,%d,%d)", bagFrom,slotFrom,moveCount,bagTo,slotTo));
-   local from_itemCount = select(2, GetContainerItemInfo(bagFrom, slotFrom));
-   ClearCursor(); -- For safty
-   if from_itemCount > moveCount then
-      rm.Debug(string.format("SplitContainerItem(%d,%d,%d)", bagFrom,slotFrom,moveCount));
-      SplitContainerItem(bagFrom,slotFrom,moveCount);
-   elseif from_itemCount == moveCount then
-      rm.Debug(string.format("PickupContainerItem(%d,%d)", bagFrom,slotFrom));
-      PickupContainerItem(bagFrom,slotFrom);
-   else
-      -- Suspending now since something is wrong.
-      coroutine.yield(nil);
-   end
-   PickupContainerItem(bagTo,slotTo);
-   rm.WaitFor("ITEM_UNLOCKED");
-   local expected = from_itemCount - moveCount;
-   rm.Debug(string.format("expected = from_itemCount - moveCount = %d - %d", from_itemCount, moveCount));
-   repeat
-      rm.WaitFor("BAG_UPDATE");
-      local new_itemCount = select(2, GetContainerItemInfo(bagFrom, slotFrom)) or 0;
-      rm.Debug(string.format("Waiting for BAG_UPDATE: (%d,%d) itemCount=%d, expected=%d", bagFrom,slotFrom,new_itemCount, expected));
-   until new_itemCount == expected;
+	rm.Debug(string.format("rm.SplitContainerItem(%d,%d,%d,%d,%d)", bagFrom,slotFrom,moveCount,bagTo,slotTo));
+	local from_itemCount = select(2, GetContainerItemInfo(bagFrom, slotFrom));
+	ClearCursor(); -- For safty
+	if from_itemCount > moveCount then
+		rm.Debug(string.format("SplitContainerItem(%d,%d,%d)", bagFrom,slotFrom,moveCount));
+		SplitContainerItem(bagFrom,slotFrom,moveCount);
+	elseif from_itemCount == moveCount then
+		rm.Debug(string.format("PickupContainerItem(%d,%d)", bagFrom,slotFrom));
+		PickupContainerItem(bagFrom,slotFrom);
+	else
+		-- Suspending now since something is wrong.
+		coroutine.yield(nil);
+	end
+	PickupContainerItem(bagTo,slotTo);
+	rm.WaitFor("ITEM_UNLOCKED");
+	local expected = from_itemCount - moveCount;
+	rm.Debug(string.format("SplitContainerItem expected = from_itemCount - moveCount = %d - %d", from_itemCount, moveCount));
+	repeat
+		rm.WaitFor("BAG_UPDATE");
+		local new_itemCount = select(2, GetContainerItemInfo(bagFrom, slotFrom)) or 0;
+		local new_itemCount2 = select(2, GetContainerItemInfo(bagTo, slotTo)) or 0;
+		rm.Debug(string.format("Waiting for BAG_UPDATE: (%d,%d) itemCount=%d, expected=%d", bagFrom,slotFrom,new_itemCount, expected));
+		rm.Debug(string.format("Waiting for BAG_UPDATE: (%d,%d) itemCount=%d, expected=%d", bagTo,slotTo,new_itemCount2, moveCount));
+	until new_itemCount == expected;
+	repeat
+		rm.WaitFor("BAG_UPDATE");
+		local new_itemCount2 = select(2, GetContainerItemInfo(bagTo, slotTo)) or 0;
+	until new_itemCount2 == moveCount;
 end
 
 function rm.FindEmptyBagSlot(srcBag)
@@ -354,33 +360,59 @@ function rm.FindEmptyBagSlot(srcBag)
 end
 
 function rm.SendLoop(itemName, quantity,sender,count2)
-   --rm.ResetPost();
-   local sendcount = 0;
-   local lastcount = 0;
-   rm.Debug(string.format("rm.SendLoop(quantity=%d)", quantity));
-   repeat
-      lastcount = sendcount;
-      for bag,slot,itemCount in rm.FindInBag(itemName) do
-	 if quantity <= 0 then
-	    break;
-	 end
-	 if itemCount > quantity then
-	    for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
-	       local moveCount = itemCount - quantity;
-	       rm.SplitContainerItem(bag,slot,moveCount,bag2,slot2);
-	       itemCount = itemCount - moveCount;
-	       break;
-	    end
-	 end
-	 rm.AddToSendMailItems(bag,slot,sender,count2)
-	    sendcount = sendcount + itemCount;
-	    quantity = quantity - itemCount;
-	 --end
-      end
-   until (sendcount == lastcount)
-   --if not rm.SendNow() then return 0; end
-   
-   return sendcount;
+	rm.Debug("rm.SendLoop " .. itemName);
+	--rm.ResetPost();
+	local sendcount = 0;
+	rm.Debug(string.format("rm.SendLoop(quantity=%d)", quantity));
+	--look for a stack equal to what we need
+	for bag,slot,itemCount in rm.FindInBag(itemName) do
+		if quantity == itemCount then
+			return bag, slot;
+		end
+	end
+	--look for a stack then that is larger than what we need
+	for bag,slot,itemCount in rm.FindInBag(itemName) do
+		if itemCount >= quantity then
+			for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
+			   rm.SplitContainerItem(bag,slot,quantity,bag2,slot2);
+			   return bag2, slot2;
+			end
+		end
+	end
+	-- todo merge stacks to get somethign alrger enough for what we need
+	repeat
+		for bag,slot,itemCount in rm.FindInBag(itemName) do
+			for bag2,slot2,itemCount2 in rm.FindInBag(itemName) do
+				if bag2~= bag then
+					if slot2 ~= slot then
+						rm.SplitContainerItem(bag2,slot2,quantity,bag,slot);
+					end
+				end
+				_, sendcount, _, _, _, _, _ = GetContainerItemInfo(bag, slot);
+				if sendcount >= quantity then
+					break;
+					--bag3, slot3 = rm.SendLoop(itemName, quantity,sender,count2);
+					--return bag3, slot3;
+				end
+			end
+		end
+	until (sendcount >= quantity)
+	--if not rm.SendNow() then return 0; end
+	for bag,slot,itemCount in rm.FindInBag(itemName) do
+		if quantity == itemCount then
+			return bag, slot;
+		end
+	end
+	--look for a stack then that is larger than what we need
+	for bag,slot,itemCount in rm.FindInBag(itemName) do
+		if itemCount >= quantity then
+			for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
+			   rm.SplitContainerItem(bag,slot,quantity,bag2,slot2);
+			   return bag2, slot2;
+			end
+		end
+	end
+	return bag2, slot2;
 end
 
 function rm.InboxIter()
@@ -571,44 +603,56 @@ function rm.RemoveUniqueId(itemLink)
    return itemLink;
 end
 
-function rm.AddToSendMailItems(bag,slot,sender,counter)
-   if rm.mailitems == counter then
-      if not rm.SendNow(sender) then return false; end
-   end
+function rm.AddToSendMailItems(itemLink, quantity,sender,counter)
+	if rm.mailitems == counter then
+		if not rm.SendNow(sender) then return false; end
+	end
+
+	idx = rm.mailitems + 1;
+	ClearCursor();
+	local _, _, _, _, _, _, _, maxStack = GetItemInfo(itemLink)
+	itemName = rm.RemoveUniqueId(itemLink);
+	if maxStack == 1 then
+		for bag,slot,itemCount in rm.FindInBag(itemName) do
+			PickupContainerItem(bag,slot);
+			break;
+		end
+	else
+		bag2, slot2 = rm.SendLoop(itemName, quantity, sender, count2);
+		print("new item at " .. bag2 .. " " .. slot2)
+		PickupContainerItem(bag2,slot2);
+	end
    
-   idx = rm.mailitems + 1;
-   ClearCursor();
-   PickupContainerItem(bag,slot);
-   rm.Debug("ClickSendMailItemButton");
-   rm.is_ClickSendMailItemButton = true;
-   ClickSendMailItemButton(idx, false);
-   rm.is_ClickSendMailItemButton = nil;
-   rm.Debug("Done ClickSendMailItemButton");
-   if rm.iserror then
-      rm.iserror = nil;
-      ClearCursor();
-      -- Suspending now because an error happened while calling ClickSendMailItemButton.
-      coroutine.yield(nil);
-   end
-   local name, tex, cnt, qual = GetSendMailItem(idx);
-   if name then
-      rm.WaitFor("OnUpdate");
-   else
-      rm.WaitFor("MAIL_SEND_INFO_UPDATE");
-   end
-   
-   ClearCursor();
-   
-   local name, tex, cnt, qual = GetSendMailItem(idx);
-   local itemLink = rm.RemoveUniqueId(GetSendMailItemLink(idx));
-   if itemLink then
-      rm.mailitems = idx;
-      rm.mailcounts[itemLink] = (rm.mailcounts[itemLink] or 0) + cnt;
-      rm.title = rm.title or name;
-      return true;
-   else
-      return false;
-   end
+	rm.Debug("ClickSendMailItemButton");
+	rm.is_ClickSendMailItemButton = true;
+	ClickSendMailItemButton(idx, false);
+	rm.is_ClickSendMailItemButton = nil;
+	rm.Debug("Done ClickSendMailItemButton");
+	if rm.iserror then
+		rm.iserror = nil;
+		ClearCursor();
+		-- Suspending now because an error happened while calling ClickSendMailItemButton.
+		coroutine.yield(nil);
+	end
+	local name, tex, cnt, qual = GetSendMailItem(idx);
+	if name then
+		rm.WaitFor("OnUpdate");
+	else
+		rm.WaitFor("MAIL_SEND_INFO_UPDATE");
+	end
+
+	ClearCursor();
+
+	local name, tex, cnt, qual = GetSendMailItem(idx);
+	local itemLink = rm.RemoveUniqueId(GetSendMailItemLink(idx));
+	if itemLink then
+		rm.mailitems = idx;
+		rm.mailcounts[itemLink] = (rm.mailcounts[itemLink] or 0) + cnt;
+		rm.title = rm.title or name;
+		return true;
+	else
+		return false;
+	end
 end
 
 function rm.TakeInboxItem(mailID, attachment)
@@ -622,114 +666,125 @@ function rm.TakeInboxItem(mailID, attachment)
 end
 
 function rm.freespace()
-   local space = 0;
-   for bag = 0, 4 do
-      local numberOfFreeSlots, BagType = GetContainerNumFreeSlots(bag);
-      if BagType == 0 then
-         space = space + numberOfFreeSlots;
-      end
-   end
-   return space;
+	local space = 0;
+	for bag = 0, 4 do
+		local numberOfFreeSlots, BagType = GetContainerNumFreeSlots(bag);
+		if BagType == 0 then
+			space = space + numberOfFreeSlots;
+		end
+	end
+	return space;
 end
 
 function rm.CountAttachments(mailID)
-   local count = 0;
-   for attachment = 1, 12 do
-      local itemLink = GetInboxItemLink(mailID, attachment);
-      if itemLink then
-	 count = count + 1;
-      end
-   end
-   return count;
+	local count = 0;
+	for attachment = 1, 12 do
+		local itemLink = GetInboxItemLink(mailID, attachment);
+		if itemLink then
+			count = count + 1;
+		end
+	end
+	return count;
 end
 
 function rm.DoForwardTo(mailID, sure)
-   local function f()
-      local count = rm.CountAttachments(mailID);
-	  local count2 = rm.CountAttachments(mailID);
-	  local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
-      if rm.freespace() < count then
-	  
-		rm.Print("Not enough bag space");
-		return;
-      end
-      rm.ResetPost();
-      for attachment = 1, 12 do
-	 local itemLink = GetInboxItemLink(mailID, attachment);
-	 if itemLink then
-		local _, _, _, _, _, _, _, maxStack = GetItemInfo(itemLink)
-		local qtyold = GetItemCount(itemLink)
-	    rm.TakeInboxItem(mailID, attachment);
-		if qtyold == 0 or maxStack == 1 then
-			rm.WaitFor("BAG_UPDATE");
+	local function f()
+		local count = rm.CountAttachments(mailID);
+		local count2 = rm.CountAttachments(mailID);
+		local itemReturns = {};
+		local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
+		if rm.freespace() < count then
+			rm.Print("Not enough bag space");
+			return;
 		end
-	    local qtynew = GetItemCount(itemLink)
-		local delta = qtynew - qtyold
-		
-		if maxStack == 1 then
-			for bag,slot,itemCount in rm.FindInBag(rm.RemoveUniqueId(itemLink)) do
-				rm.AddToSendMailItems(bag,slot,sender,count2);
-				break;
+		rm.ResetPost();
+		for attachment = 1, 12 do
+			local itemLink = GetInboxItemLink(mailID, attachment);
+			if itemLink then
+				local _, _, _, _, _, _, _, maxStack = GetItemInfo(itemLink)
+				local qtyold = GetItemCount(itemLink)
+				local ccoouunntt = rm.TakeInboxItem(mailID, attachment);
+				if qtyold == 0 or maxStack == 1 then
+					rm.WaitFor("BAG_UPDATE");
+				end
+				--if itemReturns[rm.RemoveUniqueId(itemLink)] then
+				--	itemReturns[rm.RemoveUniqueId(itemLink)] = itemReturns[rm.RemoveUniqueId(itemLink)] + ccoouunntt;
+				--else
+					itemReturns[attachment] = {}
+					itemReturns[attachment]['id'] = rm.RemoveUniqueId(itemLink);
+					itemReturns[attachment]['qty'] = ccoouunntt;
+				--end
+				count = count - 1;
+				if count == 0 then
+					break;
+				end
 			end
-		else
-			rm.SendLoop(rm.RemoveUniqueId(itemLink), delta, sender, count2)
 		end
-	    count = count - 1;
-	    if count == 0 then
-			rm.SendNow(sender, sure)
-			break;
-	    end
-	 end
-      end
+		
+		for id,v in pairs(itemReturns) do
+			local itemLink = v['id'] 
+			local quan = v['qty']
+			print(itemLink, quan);
+		end
+		
+		for id,v in pairs(itemReturns) do
+			local itemLink = v['id'] 
+			local quan = v['qty']
+			print(itemLink, quan);
+			if itemLink then
+				rm.AddToSendMailItems(itemLink,quan,sender,count2);
+			end
+		end
+		rm.SendNow(sender, sure)
 		if sure then
 			MailFrameTab1:Click();
 		else
 			MailFrameTab2:Click();
 		end
-   end
-   return rm.PushJob(f);
+	end
+	return rm.PushJob(f);
 end
 
 function rm.DoForwardToEasy(mailID)
-   local function f()
-      --todo
-	  ReturnInboxItem(mailID)
-      rm.WaitFor("MAIL_SUCCESS");
-      rm.WaitFor("OnUpdate");
-   end
-   return rm.PushJob(f);
+	local function f()
+		--todo
+		ReturnInboxItem(mailID)
+		rm.WaitFor("MAIL_SUCCESS");
+		rm.WaitFor("OnUpdate");
+	end
+	return rm.PushJob(f);
 end
 
 function rm.GetForwardItemargs()
-   table.wipe(rm.work);
-   for idx = 1, 12, 1 do 
-      local itemLink = GetSendMailItemLink(idx);
-      if itemLink then
-	 rm.work[rm.RemoveUniqueId(itemLink)] = true;
-      end
-   end
-   local itemargs = "";
-   for k,v in pairs(rm.work) do
-      itemargs = itemargs.." "..k;
-   end
-   return itemargs;
+	table.wipe(rm.work);
+	for idx = 1, 12, 1 do 
+		local itemLink = GetSendMailItemLink(idx);
+		if itemLink then
+			rm.work[rm.RemoveUniqueId(itemLink)] = true;
+		end
+	end
+	local itemargs = "";
+	for k,v in pairs(rm.work) do
+		itemargs = itemargs.." "..k;
+	end
+	return itemargs;
 end
 
 function rm.SendFrame_OnEvent(self)
-   local recipient = SendMailNameEditBox:GetText()
-   local items = false;
-   for idx = 1, 12, 1 do 
-      local itemLink = GetSendMailItemLink(idx);
-      if itemLink then
-         items = true;
-	 break;
-      end
-   end
-   if recipient and recipient ~= "" and items then
-      rm.ForwardAllButton:Enable();
-   else
-      rm.ForwardAllButton:Disable();
-   end
+	local recipient = SendMailNameEditBox:GetText()
+	local items = false;
+	for idx = 1, 12, 1 do 
+		local itemLink = GetSendMailItemLink(idx);
+		if itemLink then
+			items = true;
+			break;
+		end
+	end
+	if recipient and recipient ~= "" and items then
+	rm.ForwardAllButton:Enable();
+	else
+	rm.ForwardAllButton:Disable();
+	end
 end
 
 function rm.OnLeave()
