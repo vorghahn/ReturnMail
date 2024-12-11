@@ -27,6 +27,9 @@ local eh = rm.EventHandler;
 local _G = getfenv(0)
 rm.skip_cod = true;
 rm.isdebug = false;
+rm.sender = "";
+rm.syncerror = false;
+rm.endTime = 0;
 
 local RED = "|cffff8080";
 local CLOSE = "|r";
@@ -66,49 +69,107 @@ function rm.NextJob()
 end
 
 function rm.ResumeJobOnEvent(event)
---print("ResumeJobOnEvent")
-   if rm.isWaitingFor == event then
-      rm.isWaitingFor = nil;
-      if rm.jobs[1] then
-		rm.Debug("Resuming on : "..(event or "nil"));
-		local cont = rm.jobs[1]();
-		if not cont then
-			rm.NextJob();
+	--rm.Debug("ResumeJobOnEvent")
+	if rm.isWaitingFor == event then
+		rm.isWaitingFor = nil;
+		if rm.jobs[1] then
+			rm.Debug("Resuming on : "..(event or "nil"));
+			local cont = rm.jobs[1]();
+			if not cont then
+				rm.NextJob();
+			end
 		end
-      end
-   end
+	end
 end
 
-function rm.SuspendJobOnEvent(event)
-   if rm.jobs[1] then
-      rm.Debug(event);
-      if rm.is_ClickSendMailItemButton then
-		rm.iserror = true;
-      elseif rm.is_ClickSend then
-		rm.iserror = true;
-      else
-		rm.NextJob();
-      end
-   end
+function rm.SuspendJobOnEvent(event, error)
+	rm.Debug("SuspendJobOnEvent", event, error);
+	if rm.jobs[1] then
+		rm.Debug(event);
+		print(event)
+		print(error)
+		-- todo get this to keep retrying to send
+		if error == "Internal mail database error." then
+			rm.syncerror = true;
+		end
+		if rm.is_ClickSendMailItemButton then
+			rm.iserror = true;
+		elseif rm.is_ClickSend then
+			rm.iserror = true;
+		else
+			rm.NextJob();
+		end
+	end
+end
+
+function rm.SuspendJobOnEvent2(event, error)
+	rm.Debug("SuspendJobOnEvent", event, error);
+	if rm.syncerror then
+		rm.SyncError()
+	end
+	if rm.jobs[1] then
+		rm.Debug(event);
+		print(event)
+		print(error)
+		-- todo get this to keep retrying to send
+		if error == "Internal mail database error." then
+			rm.syncerror = true;
+		end
+		if rm.is_ClickSendMailItemButton then
+			rm.iserror = true;
+		elseif rm.is_ClickSend then
+			rm.iserror = true;
+		else
+			rm.NextJob();
+		end
+	end
+end
+
+function rm.SyncError()
+	print("Mail sync issue detected");
+	local is_SendMailFrame_Shown = SendMailFrame:IsShown();
+	if not is_SendMailFrame_Shown then
+		MailFrameTab2:Click();
+	end
+	print(rm.endTime);
+	if rm.endTime ~= 0 then
+		local endLoop = false;
+		repeat
+			print("checking times")
+			local currentTime = time();
+			print(rm.endTime);
+			print(currentTime);
+			if currentTime >= rm.endTime then
+				print("send")
+				
+				SendMailMailButton:Click()
+				endLoop = true;
+			else
+				print("extend")
+				--rm.endTime = rm.endTime + 2;
+			end
+		until (endLoop ==true)
+	end
+	return --SendMailMailButton:Click()
 end
 
 eh.MAIL_INBOX_UPDATE = function(event)
-   rm.ResumeJobOnEvent(event);
-   local numItems, totalItems = GetInboxNumItems();
-   if rm.overflowMails ~= (totalItems - numItems) then
-      if rm.longWaitJob and not rm.jobs[1] then
-	 rm.Debug("Restarting rm.longWaitJob");
+	rm.ResumeJobOnEvent(event);
+	local numItems, totalItems = GetInboxNumItems();
+	if rm.overflowMails ~= (totalItems - numItems) then
+		if rm.longWaitJob and not rm.jobs[1] then
+			rm.Debug("Restarting rm.longWaitJob");
 
-	 rm.longWaitJob(rm.longWaitMsg);
-	 rm.longWaitJob = nil;
-	 rm.longWaitMsg = nil;
-      end
-   end
-   if totalItems > numItems then
-      rm.overflowMails = totalItems - numItems;
-   else
-      rm.overflowMails = nil;
-   end
+			rm.longWaitJob(rm.longWaitMsg);
+			rm.longWaitJob = nil;
+			rm.longWaitMsg = nil;
+		end
+	end
+	if totalItems > numItems then
+		rm.overflowMails = totalItems - numItems;
+	else
+		rm.overflowMails = nil;
+	end
 end
 eh.MAIL_SEND_SUCCESS = rm.ResumeJobOnEvent;
 eh.MAIL_SEND_INFO_UPDATE = rm.ResumeJobOnEvent;
@@ -134,7 +195,7 @@ rm.OnUpdate = function(self, elapsed)
       end
    end
 end
-eh.MAIL_FAILED = rm.SuspendJobOnEvent;
+eh.MAIL_FAILED = rm.SuspendJobOnEvent2;
 eh.UI_ERROR_MESSAGE = rm.SuspendJobOnEvent;
 eh.MAIL_CLOSED = function()
    table.wipe(rm.jobs);
@@ -150,13 +211,13 @@ eh.MAIL_CLOSED = function()
 end
 
 function rm.MAIL_SHOW()
-   for k,v in pairs(eh) do
-      rm.JobFrame:RegisterEvent(k);
-   end
-   rm.JobFrame:SetScript("OnEvent", function(self, event, ...)
+	for k,v in pairs(eh) do
+		rm.JobFrame:RegisterEvent(k);
+	end
+	rm.JobFrame:SetScript("OnEvent", function(self, event, ...)
          if eh[event] then eh[event](event, ...); end;
    end);
-   rm.JobFrame:SetScript("OnUpdate", rm.OnUpdate);
+	rm.JobFrame:SetScript("OnUpdate", rm.OnUpdate);
 end
 
 function rm.PushJob(f)
@@ -213,43 +274,46 @@ function rm:returnDaysSet(days)
 end
 
 function rm.VARIABLES_LOADED(self)
-   rm.JobFrame:UnregisterEvent("VARIABLES_LOADED");
+	rm.JobFrame:UnregisterEvent("VARIABLES_LOADED");
 
-   rm.JobFrame.timer = rm.RECHECK_TIMER;
-   rm.JobFrame:RegisterEvent("MAIL_SHOW");
-   rm.JobFrame:SetScript("OnEvent", rm.MAIL_SHOW);
+	rm.JobFrame.timer = rm.RECHECK_TIMER;
+	rm.JobFrame:RegisterEvent("MAIL_SHOW");
+	rm.JobFrame:SetScript("OnEvent", rm.MAIL_SHOW);
+
+	ReturnMailForwardToButton = ReturnMailForwardToButton or
+	CreateFrame("Button", "ReturnMailForwardToButton", OpenMailCancelButton, "UIPanelButtonTemplate");
+	rm.ForwardToButton = ReturnMailForwardToButton;
+	rm.ForwardToButton:SetAllPoints(OpenMailCancelButton);
+	rm.ForwardToButton:SetText(L.TITLE_FORWARD_TO_BUTTON);
+	rm.ForwardToButton:SetScript("OnClick", rm.ForwardToButton_OnClick);
+	rm.ForwardToButton:SetScript("OnEnter", rm.ForwardToButton_OnEnter);
+	rm.ForwardToButton:SetScript("OnLeave", rm.OnLeave);
+
+	ReturnMailForwardAllButton = ReturnMailForwardAllButton or
+	CreateFrame("Button", "ReturnMailForwardAllButton", InboxFrame, "UIPanelButtonTemplate");
+	rm.ForwardAllButton = ReturnMailForwardAllButton;
+	rm.ForwardAllButton:SetPoint("TOPLEFT", InboxCloseButton ,"TOPLEFT", -280, -10);
+	rm.ForwardAllButton:SetWidth(120)
+	rm.ForwardAllButton:SetHeight(20)
+	rm.ForwardAllButton:SetText(L.TITLE_FORWARD_ALL_BUTTON);
+	rm.ForwardAllButton:SetScript("OnClick", rm.DoOpenMail);
+	rm.ForwardAllButton:SetScript("OnLeave", rm.OnLeave);
+
+
+	ReturnMailDays = ReturnMailDays or
+	CreateFrame("EditBox", "ReturnMailDays",
+							  InboxFrame, "InputBoxTemplate")
+	rm.ForwardAllDays = ReturnMailDays;
+	rm.ForwardAllDays:SetPoint("TOPLEFT", ReturnMailForwardAllButton ,"TOPLEFT", 180, 0);
+	rm.ForwardAllDays:SetWidth(20)
+	rm.ForwardAllDays:SetHeight(20)
+	rm.ForwardAllDays:SetText(rm.returnDays);
+	rm.ForwardAllDays:SetAutoFocus(false);
+	-- todo fix clear focus
+	--rm.ForwardAllDays:SetScript("OnEnter", ClearFocus());
+	--rm.ForwardAllDays:SetScript("OnLeave", ReturnMailDays:ClearFocus());
    
-   ReturnMailForwardToButton = ReturnMailForwardToButton or
-   CreateFrame("Button", "ReturnMailForwardToButton", OpenMailCancelButton, "UIPanelButtonTemplate");
-   rm.ForwardToButton = ReturnMailForwardToButton;
-   rm.ForwardToButton:SetAllPoints(OpenMailCancelButton);
-   rm.ForwardToButton:SetText(L.TITLE_FORWARD_TO_BUTTON);
-   rm.ForwardToButton:SetScript("OnClick", rm.ForwardToButton_OnClick);
-   rm.ForwardToButton:SetScript("OnEnter", rm.ForwardToButton_OnEnter);
-   rm.ForwardToButton:SetScript("OnLeave", rm.OnLeave);
-   
-   ReturnMailForwardAllButton = ReturnMailForwardAllButton or
-   CreateFrame("Button", "ReturnMailForwardAllButton", InboxFrame, "UIPanelButtonTemplate");
-   rm.ForwardAllButton = ReturnMailForwardAllButton;
-   rm.ForwardAllButton:SetPoint("TOPLEFT", InboxCloseButton ,"TOPLEFT", -280, -10);
-   rm.ForwardAllButton:SetWidth(120)
-   rm.ForwardAllButton:SetHeight(20)
-   rm.ForwardAllButton:SetText(L.TITLE_FORWARD_ALL_BUTTON);
-   rm.ForwardAllButton:SetScript("OnClick", rm.DoOpenMail);
-   rm.ForwardAllButton:SetScript("OnLeave", rm.OnLeave);
-   
-   
-   ReturnMailDays = ReturnMailDays or
-   CreateFrame("EditBox", "ReturnMailDays",
-                              InboxFrame, "InputBoxTemplate")
-   rm.ForwardAllDays = ReturnMailDays;
-   rm.ForwardAllDays:SetPoint("TOPLEFT", ReturnMailForwardAllButton ,"TOPLEFT", 180, 0);
-   rm.ForwardAllDays:SetWidth(20)
-   rm.ForwardAllDays:SetHeight(20)
-   rm.ForwardAllDays:SetText(rm.returnDays);
-   rm.ForwardAllDays:SetAutoFocus(false);
-   
-   local ForwardAllText=CreateFrame("Frame","FrameName",InboxFrame);--    Our frame
+	local ForwardAllText=CreateFrame("Frame","FrameName",InboxFrame);--    Our frame
 	ForwardAllText:SetPoint("TOPLEFT", ReturnMailDays ,"TOPLEFT", 17, 0);
 	ForwardAllText:SetSize(40,20);
  
@@ -279,36 +343,36 @@ function rm.VARIABLES_LOADED(self)
 
 
 	
-	   if ReturnMailVars[rm.ForwardToButton:GetName()] == "HIDE" then
-      rm.ForwardToButton:Hide();
-   end
+		if ReturnMailVars[rm.ForwardToButton:GetName()] == "HIDE" then
+		rm.ForwardToButton:Hide();
+	end
 end
 
 function rm.TakeItemStr(itemargs)
-   local itemName, rest, quantity;
-   quantity, rest = itemargs:match("^%s*(%d+)%s*(.-)$");
-   if quantity then
-      itemargs = rest;
-      quantity = tonumber(quantity);
-   end
+	local itemName, rest, quantity;
+	quantity, rest = itemargs:match("^%s*(%d+)%s*(.-)$");
+	if quantity then
+		itemargs = rest;
+		quantity = tonumber(quantity);
+	end
 
-   itemName, rest = itemargs:match("^%s*%[([^][]+)%]%s*(.-)$");
-   if itemName then
-      return itemName, rest, quantity;
-   end
-   itemName, rest = itemargs:match("^%s*%S*(item:%d+)[^[%s]*%[.-%]|[^[%s]*%s*(.-)$");
-   if itemName then
-      return itemName, rest, quantity;
-   end
-   itemName, rest = itemargs:match("^%s*(item:%d+)%s*(.-)$");
-   if itemName then
-      return itemName, rest, quantity;
-   end
-   itemName = itemargs:match("^%s*([^][%s][^][]-)%s*$");
-   if itemName then
-      return itemName, "", quantity;
-   end
-   return nil;
+	itemName, rest = itemargs:match("^%s*%[([^][]+)%]%s*(.-)$");
+	if itemName then
+		return itemName, rest, quantity;
+	end
+	itemName, rest = itemargs:match("^%s*%S*(item:%d+)[^[%s]*%[.-%]|[^[%s]*%s*(.-)$");
+	if itemName then
+		return itemName, rest, quantity;
+	end
+	itemName, rest = itemargs:match("^%s*(item:%d+)%s*(.-)$");
+	if itemName then
+		return itemName, rest, quantity;
+	end
+	itemName = itemargs:match("^%s*([^][%s][^][]-)%s*$");
+	if itemName then
+		return itemName, "", quantity;
+	end
+	return nil;
 end
 
 function rm.SplitContainerItem(bagFrom,slotFrom,moveCount,bagTo,slotTo)
@@ -343,20 +407,20 @@ function rm.SplitContainerItem(bagFrom,slotFrom,moveCount,bagTo,slotTo)
 end
 
 function rm.FindEmptyBagSlot(srcBag)
-   local function f()
-      for bag = 0, 4 do
-	 local numberOfFreeSlots, BagType = GetContainerNumFreeSlots(bag);
-	 if bag == srcBag or BagType == 0 then
-	    for slot = 1, GetContainerNumSlots(bag) do
-	       local texture, itemCount, locked, quality, readable, lootable, itemLink = GetContainerItemInfo(bag, slot)
-	       if not itemLink then
-		  coroutine.yield(bag, slot);
-	       end
-	    end
-	 end
-      end
-   end
-   return coroutine.wrap(f);
+	local function f()
+		for bag = 0, 4 do
+			local numberOfFreeSlots, BagType = GetContainerNumFreeSlots(bag);
+			if bag == srcBag or BagType == 0 then
+				for slot = 1, GetContainerNumSlots(bag) do
+					local texture, itemCount, locked, quality, readable, lootable, itemLink = GetContainerItemInfo(bag, slot)
+					if not itemLink then
+						coroutine.yield(bag, slot);
+					end
+				end
+			end
+		end
+	end
+	return coroutine.wrap(f);
 end
 
 function rm.SendLoop(itemName, quantity,sender,count2)
@@ -439,31 +503,27 @@ end
 
 function rm.InboxIterEasy()
 	local numItems, totalItems = GetInboxNumItems();
-	--local function f()
-		for mailID = numItems, 1, -1 do
-			--print(mailID)
-			local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
-			local skipped = false
-			if CODAmount and CODAmount > 0 then
-				rm.Debug("Skipping CoD");
-				skipped = true;
-			end
-			if isGM then
-				rm.Debug("Skipping GM");
-				skipped = true;
-			end
-			local easy = InboxItemCanDelete(mailID)
+	for mailID = numItems, 1, -1 do
+		local packageIcon, stationeryIcon, sender, subject, money, CODAmount, daysLeft, itemCount, wasRead, x, y, z, isGM, firstItemQuantity = GetInboxHeaderInfo(mailID);
+		local skipped = false
+		if CODAmount and CODAmount > 0 then
+			rm.Debug("Skipping CoD");
+			skipped = true;
+		end
+		if isGM then
+			rm.Debug("Skipping GM");
+			skipped = true;
+		end
+		local easy = InboxItemCanDelete(mailID)
 
-			if not skipped and not easy then
-				--todo
-				if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
-					rm.Debug("easy return");
-					rm.DoForwardToEasy(mailID)
-				end
+		if not skipped and not easy then
+			--todo
+			if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
+				rm.Debug("easy return");
+				rm.DoForwardToEasy(mailID)
 			end
 		end
-	--end
-	--return
+	end
 end
 
 local SubjectPatterns = {
@@ -492,97 +552,110 @@ end
 function rm.DoOpenMailForce()
 	print("Openmail")
 	print(rm.ForwardAllDays:GetText())
-	--local function f()
-		for mailID, daysLeft, subject in rm.InboxIter() do
-			local mailType = rm.GetMailType(subject);
-			--print(mailType)
-			if mailType == "NonAHMail" then
-				if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
-					rm.DoForwardTo(mailID,true);
-				end
+	for mailID, daysLeft, subject in rm.InboxIter() do
+		local mailType = rm.GetMailType(subject);
+		if mailType == "NonAHMail" then
+			if tonumber(daysLeft) < tonumber(rm.ForwardAllDays:GetText()) then
+				rm.DoForwardTo(mailID,true);
 			end
 		end
-		return rm.WaitForRefresh(rm.DoOpenMailForce);
-	--end
-	--return rm.PushJob(f);
+	end
+	return rm.WaitForRefresh(rm.DoOpenMailForce);
 end
 
 function rm.MatchItem(itemLink, itemarg)
-   if not itemLink or not itemarg then
-      return false;
-   elseif itemLink:match("%[(.+)%]"):lower() == itemarg:lower() then
-      return true;
-   elseif itemLink:match("item:%d+") == itemarg then
-      return true;
-   elseif rm.RemoveUniqueId(itemLink) == itemarg then
-      return true;
-   end
-   return false;
+	if not itemLink or not itemarg then
+		return false;
+	elseif itemLink:match("%[(.+)%]"):lower() == itemarg:lower() then
+		return true;
+	elseif itemLink:match("item:%d+") == itemarg then
+		return true;
+	elseif rm.RemoveUniqueId(itemLink) == itemarg then
+		return true;
+	end
+	return false;
 end
 
 function rm.FindInBag(name)
-   local function f()
-      for bag = 0, 4 do
-         for slot = 1, GetContainerNumSlots(bag) do
-            local texture, itemCount, locked, quality, readable, lootable, itemLink = GetContainerItemInfo(bag, slot)
-	    if itemLink and not locked then
-	       if rm.MatchItem(itemLink, name) then
-		  coroutine.yield(bag, slot, itemCount);
-	       end
-            end
-         end
-      end
-   end
-   return coroutine.wrap(f);
+	local function f()
+	for bag = 0, 4 do
+		for slot = 1, GetContainerNumSlots(bag) do
+			local texture, itemCount, locked, quality, readable, lootable, itemLink = GetContainerItemInfo(bag, slot)
+			if itemLink and not locked then
+				if rm.MatchItem(itemLink, name) then
+					coroutine.yield(bag, slot, itemCount);
+				end
+				end
+			end
+		end
+	end
+	return coroutine.wrap(f);
 end
 
 function rm.ResetPost()
-   rm.title = nil;
-   for i = 1, 12 do
-      local name, tex, cnt, qual = GetSendMailItem(i);
-      if name then
-		rm.Debug("ResetPost:ClickSendMailItemButton");
-         ClickSendMailItemButton(i, true);
-		rm.Debug("ResetPost:Done ClickSendMailItemButton");
+	rm.title = nil;
+	for i = 1, 12 do
+		local name, tex, cnt, qual = GetSendMailItem(i);
+		if name then
+			rm.Debug("ResetPost:ClickSendMailItemButton");
+			ClickSendMailItemButton(i, true);
+			rm.Debug("ResetPost:Done ClickSendMailItemButton");
 
-	 local name, tex, cnt, qual = GetSendMailItem(i);
-	 if name then
-	    rm.WaitFor("MAIL_SEND_INFO_UPDATE");
-	    rm.WaitFor("OnUpdate");
-	 else
-	    rm.WaitFor("OnUpdate");
-	 end
-      end
-   end
-   rm.mailitems = 0;
-   table.wipe(rm.mailcounts);
+			local name, tex, cnt, qual = GetSendMailItem(i);
+			if name then
+				rm.WaitFor("MAIL_SEND_INFO_UPDATE");
+				rm.WaitFor("OnUpdate");
+			else
+				rm.WaitFor("OnUpdate");
+			end
+		end
+	end
+	rm.mailitems = 0;
+	table.wipe(rm.mailcounts);
+end
+
+function rm.SendNow2(sender, sure)
+	local is_SendMailFrame_Shown = SendMailFrame:IsShown();
+	if not is_SendMailFrame_Shown then
+		MailFrameTab2:Click();
+	end
+	SendMailMailButton:Click()
+	rm.is_ClickSend = true;
+	rm.sender = sender;
+	SendMail(sender, ("Return"), "");
+	if rm.syncerror == true then
+		print("Trying");
+	end
 end
 
 function rm.SendNow(sender, sure)
-   if not MailFrame:IsShown() then
-      rm.Print(L.TEXT_NOT_VISIBLE);
-      rm.ResetPost();
-      return false;
-   end
-   if rm.mailitems > 0 and sure then 
-      local is_SendMailFrame_Shown = SendMailFrame:IsShown();
-      if not is_SendMailFrame_Shown then
-	 MailFrameTab2:Click();
-      end
+	if not MailFrame:IsShown() then
+		rm.Print(L.TEXT_NOT_VISIBLE);
+		rm.ResetPost();
+		return false;
+	end
+	if rm.mailitems > 0 and sure then 
+		local is_SendMailFrame_Shown = SendMailFrame:IsShown();
+		if not is_SendMailFrame_Shown then
+			MailFrameTab2:Click();
+		end
 		rm.is_ClickSend = true;
-      SendMail(sender, ("Return"), "");
-      
-      rm.WaitFor("MAIL_SEND_SUCCESS");
-      rm.WaitFor("MAIL_SUCCESS");
-      rm.WaitFor("OnUpdate");
-      
-      rm.ResetPost();
-	  rm.is_ClickSend = nil;
-      if not is_SendMailFrame_Shown then
-	 MailFrameTab1:Click();
-      end
-   end
-   return true;
+		rm.sender = sender;
+		rm.endTime = time();
+		SendMail(sender, ("Return"), "");
+
+		rm.WaitFor("MAIL_SEND_SUCCESS");
+		rm.WaitFor("MAIL_SUCCESS");
+		rm.WaitFor("OnUpdate");
+		rm.syncerror = false;
+		rm.endTime = 0;
+		rm.ResetPost();
+		rm.is_ClickSend = nil;
+		if not is_SendMailFrame_Shown then
+			MailFrameTab1:Click();
+		end
+	end
+	return true;
 end
 
 --[[
@@ -591,16 +664,16 @@ end
    Ref: http://www.wowpedia.org/ItemString
 --]]
 function rm.RemoveUniqueId(itemLink)
-   if not itemLink then
-      return nil;
-   end
-   local linkType, itemId, enchantId, jewelId1, jewelId2, jewelId3, jewelId4, suffixId, uniqueId, linkLevel, reforgeId, extra1 = strsplit(":", itemLink);
-   suffixId = tonumber(suffixId) or 0;
-   uniqueId = tonumber(uniqueId) or 0;
-   if suffixId >= 0 and uniqueId ~= 0 then
-      itemLink = string.gsub(itemLink, '^(.*item:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*):[^:]*:(.*)$', '%1:0:%2');
-   end
-   return itemLink;
+	if not itemLink then
+		return nil;
+	end
+	local linkType, itemId, enchantId, jewelId1, jewelId2, jewelId3, jewelId4, suffixId, uniqueId, linkLevel, reforgeId, extra1 = strsplit(":", itemLink);
+	suffixId = tonumber(suffixId) or 0;
+	uniqueId = tonumber(uniqueId) or 0;
+	if suffixId >= 0 and uniqueId ~= 0 then
+		itemLink = string.gsub(itemLink, '^(.*item:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*):[^:]*:(.*)$', '%1:0:%2');
+	end
+	return itemLink;
 end
 
 function rm.AddToSendMailItems(itemLink, quantity,sender,counter)
@@ -788,17 +861,17 @@ function rm.SendFrame_OnEvent(self)
 end
 
 function rm.OnLeave()
-   GameTooltip:Hide();
+	GameTooltip:Hide();
 end
 
 function rm.OpenButton_OnEnter(self)
-   GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-   GameTooltip:SetText(L.TOOLTIP_OPEN_BUTTON, 1.0, 1.0, 1.0, 1, 1);
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+	GameTooltip:SetText(L.TOOLTIP_OPEN_BUTTON, 1.0, 1.0, 1.0, 1, 1);
 end
 
 function rm.ForwardToButton_OnEnter(self)
-   GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
-   GameTooltip:SetText(L.TOOLTIP_FORWARD_TO_BUTTON, 1.0, 1.0, 1.0, 1, 1);
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT");
+	GameTooltip:SetText(L.TOOLTIP_FORWARD_TO_BUTTON, 1.0, 1.0, 1.0, 1, 1);
 end
 
 function rm.ForwardToButton_OnClick(self)
