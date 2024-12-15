@@ -424,59 +424,31 @@ function rm.FindEmptyBagSlot(srcBag)
 end
 
 function rm.SendLoop(itemName, quantity,sender,count2)
-	rm.Debug("rm.SendLoop " .. itemName);
-	--rm.ResetPost();
+   --rm.ResetPost();
 	local sendcount = 0;
 	rm.Debug(string.format("rm.SendLoop(quantity=%d)", quantity));
-	--look for a stack equal to what we need
-	for bag,slot,itemCount in rm.FindInBag(itemName) do
-		if quantity == itemCount then
-			return bag, slot;
-		end
-	end
-	--look for a stack then that is larger than what we need
-	for bag,slot,itemCount in rm.FindInBag(itemName) do
-		if itemCount >= quantity then
-			for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
-			   rm.SplitContainerItem(bag,slot,quantity,bag2,slot2);
-			   return bag2, slot2;
-			end
-		end
-	end
-	-- todo merge stacks to get somethign alrger enough for what we need
 	repeat
 		for bag,slot,itemCount in rm.FindInBag(itemName) do
-			for bag2,slot2,itemCount2 in rm.FindInBag(itemName) do
-				if bag2~= bag then
-					if slot2 ~= slot then
-						rm.SplitContainerItem(bag2,slot2,quantity,bag,slot);
-					end
-				end
-				_, sendcount, _, _, _, _, _ = GetContainerItemInfo(bag, slot);
-				if sendcount >= quantity then
-					break;
-					--bag3, slot3 = rm.SendLoop(itemName, quantity,sender,count2);
-					--return bag3, slot3;
+			if (quantity-sendcount) <= 0 then
+				break;
+			end
+			if quantity > itemCount then
+				rm.AddToSendMailItems(bag,slot,sender,itemCount);
+				sendcount= sendcount + itemCount;
+			else if itemCount > quantity then
+				for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
+					local moveCount = itemCount - quantity;
+					rm.SplitContainerItem(bag,slot,moveCount,bag2,slot2);
+					rm.AddToSendMailItems(bag2,slot2,sender,itemCount);
+					sendcount = sendcount + moveCount;
 				end
 			end
 		end
-	until (sendcount >= quantity)
+	end
+	until (sendcount == quantity)
 	--if not rm.SendNow() then return 0; end
-	for bag,slot,itemCount in rm.FindInBag(itemName) do
-		if quantity == itemCount then
-			return bag, slot;
-		end
-	end
-	--look for a stack then that is larger than what we need
-	for bag,slot,itemCount in rm.FindInBag(itemName) do
-		if itemCount >= quantity then
-			for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
-			   rm.SplitContainerItem(bag,slot,quantity,bag2,slot2);
-			   return bag2, slot2;
-			end
-		end
-	end
-	return bag2, slot2;
+   
+	return sendcount;
 end
 
 function rm.InboxIter()
