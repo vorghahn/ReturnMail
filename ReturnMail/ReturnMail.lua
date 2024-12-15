@@ -425,30 +425,32 @@ end
 
 function rm.SendLoop(itemName, quantity,sender,count2)
    --rm.ResetPost();
-	local sendcount = 0;
-	rm.Debug(string.format("rm.SendLoop(quantity=%d)", quantity));
-	repeat
-		for bag,slot,itemCount in rm.FindInBag(itemName) do
-			if (quantity-sendcount) <= 0 then
-				break;
-			end
-			if quantity > itemCount then
-				rm.AddToSendMailItems(bag,slot,sender,itemCount);
-				sendcount= sendcount + itemCount;
-			else if itemCount > quantity then
-				for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
-					local moveCount = itemCount - quantity;
-					rm.SplitContainerItem(bag,slot,moveCount,bag2,slot2);
-					rm.AddToSendMailItems(bag2,slot2,sender,itemCount);
-					sendcount = sendcount + moveCount;
-				end
-			end
-		end
-	end
-	until (sendcount == quantity)
-	--if not rm.SendNow() then return 0; end
+   local sendcount = 0;
+   local lastcount = 0;
+   rm.Debug(string.format("rm.SendLoop(quantity=%d)", quantity));
+   repeat
+      lastcount = sendcount;
+      for bag,slot,itemCount in rm.FindInBag(itemName) do
+	 if quantity <= 0 then
+	    break;
+	 end
+	 if itemCount > quantity then
+	    for bag2,slot2 in rm.FindEmptyBagSlot(bag) do
+	       local moveCount = itemCount - quantity;
+	       rm.SplitContainerItem(bag,slot,moveCount,bag2,slot2);
+	       itemCount = itemCount - moveCount;
+	       break;
+	    end
+	 end
+	 rm.AddToSendMailItems(bag,slot,sender,count2)
+	    sendcount = sendcount + itemCount;
+	    quantity = quantity - itemCount;
+	 --end
+      end
+   until (sendcount == lastcount)
+   --if not rm.SendNow() then return 0; end
    
-	return sendcount;
+   return sendcount;
 end
 
 function rm.InboxIter()
