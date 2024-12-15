@@ -12,6 +12,10 @@ Known issue(s):
 Can process fast enough to trigger mail desync resulting in a pause. Waiting a few seconds and hitting the send button will restart the process.
 
 Release Log:
+v1.4.0
+- Fix for stackable items breaking the return process, again.
+- Support added for re-attempting following a mailbox server sync error that often follows from sending multiple mail items in a short duration.
+
 v1.3.0
 - Fix for stackable items breaking the return process.
 - Fix for easy returns breaking the iteration.
